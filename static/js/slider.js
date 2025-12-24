@@ -1,128 +1,178 @@
-// Function to update sliders based on grid values
-function updateSliders(gridDimensions) {
+// slider.js - Final Merged Version
 
-    const buffer = 100; // Optional buffer to allow a bit of leeway on either side
+document.addEventListener('DOMContentLoaded', function() {
+    console.log("Slider.js initialized");
 
-    // Center sliders
-    document.getElementById('center-x-slider').max = gridDimensions.center_x + buffer;
-    document.getElementById('center-x-slider').min = gridDimensions.center_x - buffer;
-    document.getElementById('center-x-slider').value = gridDimensions.center_x;
+    // 1. YOUR ORIGINAL SLIDER UPDATE FUNCTION
+    // We attach it to window so grid.js can call it
+    window.updateSliders = function(gridDimensions) {
+        const buffer = 100; 
 
-    document.getElementById('center-y-slider').max = gridDimensions.center_y + buffer;
-    document.getElementById('center-y-slider').min = gridDimensions.center_y - buffer;
-    document.getElementById('center-y-slider').value = gridDimensions.center_y;
+        // Center sliders
+        const cx = document.getElementById('center-x-slider');
+        if(cx) { cx.max = gridDimensions.center_x + buffer; cx.min = gridDimensions.center_x - buffer; cx.value = gridDimensions.center_x; }
+        
+        const cy = document.getElementById('center-y-slider');
+        if(cy) { cy.max = gridDimensions.center_y + buffer; cy.min = gridDimensions.center_y - buffer; cy.value = gridDimensions.center_y; }
+        
+        const cz = document.getElementById('center-z-slider');
+        if(cz) { cz.max = gridDimensions.center_z + buffer; cz.min = gridDimensions.center_z - buffer; cz.value = gridDimensions.center_z; }
 
-    document.getElementById('center-z-slider').max = gridDimensions.center_z + buffer;
-    document.getElementById('center-z-slider').min = gridDimensions.center_z - buffer;
-    document.getElementById('center-z-slider').value = gridDimensions.center_z;
+        // Size sliders
+        const sx = document.getElementById('size-x-slider');
+        if(sx) { sx.max = gridDimensions.size_x + buffer; sx.min = 1; sx.value = gridDimensions.size_x; }
+        
+        const sy = document.getElementById('size-y-slider');
+        if(sy) { sy.max = gridDimensions.size_y + buffer; sy.min = 1; sy.value = gridDimensions.size_y; }
+        
+        const sz = document.getElementById('size-z-slider');
+        if(sz) { sz.max = gridDimensions.size_z + buffer; sz.min = 1; sz.value = gridDimensions.size_z; }
 
-    // Size sliders
-    document.getElementById('size-x-slider').max = gridDimensions.size_x + buffer;
-    document.getElementById('size-x-slider').min = 1;
-    document.getElementById('size-x-slider').value = gridDimensions.size_x;
+        // Update displayed text values
+        document.getElementById('center-x-value').textContent = gridDimensions.center_x.toFixed(5);
+        document.getElementById('center-y-value').textContent = gridDimensions.center_y.toFixed(5);
+        document.getElementById('center-z-value').textContent = gridDimensions.center_z.toFixed(5);
 
-    document.getElementById('size-y-slider').max = gridDimensions.size_y + buffer;
-    document.getElementById('size-y-slider').min = 1;
-    document.getElementById('size-y-slider').value = gridDimensions.size_y;
-
-    document.getElementById('size-z-slider').max = gridDimensions.size_z + buffer;
-    document.getElementById('size-z-slider').min = 1;
-    document.getElementById('size-z-slider').value = gridDimensions.size_z;
-
-    // Update the displayed values
-    document.getElementById('center-x-value').textContent = gridDimensions.center_x.toFixed(5);
-    document.getElementById('center-y-value').textContent = gridDimensions.center_y.toFixed(5);
-    document.getElementById('center-z-value').textContent = gridDimensions.center_z.toFixed(5);
-
-    document.getElementById('size-x-value').textContent = gridDimensions.size_x.toFixed(5);
-    document.getElementById('size-y-value').textContent = gridDimensions.size_y.toFixed(5);
-    document.getElementById('size-z-value').textContent = gridDimensions.size_z.toFixed(5);
-}
-
-
-
-// Event listeners for sliders
-document.getElementById('center-x-slider').addEventListener('input', (e) => {
-    let gridDimensions = window.gridDimensions || {};
-    gridDimensions.center_x = parseInt(e.target.value, 10);
-    drawGridBox(gridDimensions); // Redraw the grid with updated position
-    document.getElementById('center-x-value').textContent = gridDimensions.center_x;
-});
-
-document.getElementById('center-y-slider').addEventListener('input', (e) => {
-    let gridDimensions = window.gridDimensions || {};
-    gridDimensions.center_y = parseInt(e.target.value, 10);
-    drawGridBox(gridDimensions); // Redraw the grid with updated position
-    document.getElementById('center-y-value').textContent = gridDimensions.center_y;
-});
-
-document.getElementById('center-z-slider').addEventListener('input', (e) => {
-    let gridDimensions = window.gridDimensions || {};
-    gridDimensions.center_z = parseInt(e.target.value, 10);
-    drawGridBox(gridDimensions); // Redraw the grid with updated position
-    document.getElementById('center-z-value').textContent = gridDimensions.center_z;
-});
-
-document.getElementById('size-x-slider').addEventListener('input', (e) => {
-    let gridDimensions = window.gridDimensions || {};
-    gridDimensions.size_x = parseInt(e.target.value, 10);
-    drawGridBox(gridDimensions); // Redraw the grid with updated size
-    document.getElementById('size-x-value').textContent = gridDimensions.size_x;
-});
-
-document.getElementById('size-y-slider').addEventListener('input', (e) => {
-    let gridDimensions = window.gridDimensions || {};
-    gridDimensions.size_y = parseInt(e.target.value, 10);
-    drawGridBox(gridDimensions); // Redraw the grid with updated size
-    document.getElementById('size-y-value').textContent = gridDimensions.size_y;
-});
-
-document.getElementById('size-z-slider').addEventListener('input', (e) => {
-    let gridDimensions = window.gridDimensions || {};
-    gridDimensions.size_z = parseInt(e.target.value);
-    drawGridBox(gridDimensions); // Redraw the grid with updated size
-    document.getElementById('size-z-value').textContent = gridDimensions.size_z;
-});
-
-document.getElementById('download-grid-btn').addEventListener('click', async function () {
-    if (!window.gridDimensions || !window.uploadedFilePath) {
-        alert("Please generate the grid first.");
-        return;
-    }
-
-    const getValue = (id, fallback) => {
-        const el = document.getElementById(id);
-        return el && el.value !== '' ? parseFloat(el.value) : fallback;
+        document.getElementById('size-x-value').textContent = gridDimensions.size_x.toFixed(5);
+        document.getElementById('size-y-value').textContent = gridDimensions.size_y.toFixed(5);
+        document.getElementById('size-z-value').textContent = gridDimensions.size_z.toFixed(5);
     };
 
-    const gridData = {
-        center_x: getValue('center-x-slider', window.gridDimensions.center_x),
-        center_y: getValue('center-y-slider', window.gridDimensions.center_y),
-        center_z: getValue('center-z-slider', window.gridDimensions.center_z),
-        size_x: getValue('size-x-slider', window.gridDimensions.size_x),
-        size_y: getValue('size-y-slider', window.gridDimensions.size_y),
-        size_z: getValue('size-z-slider', window.gridDimensions.size_z),
-    };
+    // 2. YOUR INDIVIDUAL EVENT LISTENERS
+    // Helper to redraw safely
+    const safeDraw = (dims) => { if(typeof drawGridBox === 'function') drawGridBox(dims); };
 
-    try {
-        const res = await fetch('/save_grid', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                filepath: window.uploadedFilePath,
-                grid: gridData
-            })
-        });
+    const elCx = document.getElementById('center-x-slider');
+    if(elCx) elCx.addEventListener('input', (e) => {
+        if(!window.gridDimensions) window.gridDimensions = {};
+        window.gridDimensions.center_x = parseFloat(e.target.value);
+        safeDraw(window.gridDimensions);
+        document.getElementById('center-x-value').textContent = window.gridDimensions.center_x;
+    });
 
-        if (res.ok) {
-            // SUCCESS: Unlock Step 2 and Move there
-            // Function defined in action.js
-            if (typeof unlockStep === "function") {
-                unlockStep(2); 
+    const elCy = document.getElementById('center-y-slider');
+    if(elCy) elCy.addEventListener('input', (e) => {
+        if(!window.gridDimensions) window.gridDimensions = {};
+        window.gridDimensions.center_y = parseFloat(e.target.value);
+        safeDraw(window.gridDimensions);
+        document.getElementById('center-y-value').textContent = window.gridDimensions.center_y;
+    });
+
+    const elCz = document.getElementById('center-z-slider');
+    if(elCz) elCz.addEventListener('input', (e) => {
+        if(!window.gridDimensions) window.gridDimensions = {};
+        window.gridDimensions.center_z = parseFloat(e.target.value);
+        safeDraw(window.gridDimensions);
+        document.getElementById('center-z-value').textContent = window.gridDimensions.center_z;
+    });
+
+    const elSx = document.getElementById('size-x-slider');
+    if(elSx) elSx.addEventListener('input', (e) => {
+        if(!window.gridDimensions) window.gridDimensions = {};
+        window.gridDimensions.size_x = parseFloat(e.target.value);
+        safeDraw(window.gridDimensions);
+        document.getElementById('size-x-value').textContent = window.gridDimensions.size_x;
+    });
+
+    const elSy = document.getElementById('size-y-slider');
+    if(elSy) elSy.addEventListener('input', (e) => {
+        if(!window.gridDimensions) window.gridDimensions = {};
+        window.gridDimensions.size_y = parseFloat(e.target.value);
+        safeDraw(window.gridDimensions);
+        document.getElementById('size-y-value').textContent = window.gridDimensions.size_y;
+    });
+
+    const elSz = document.getElementById('size-z-slider');
+    if(elSz) elSz.addEventListener('input', (e) => {
+        if(!window.gridDimensions) window.gridDimensions = {};
+        window.gridDimensions.size_z = parseFloat(e.target.value);
+        safeDraw(window.gridDimensions);
+        document.getElementById('size-z-value').textContent = window.gridDimensions.size_z;
+    });
+
+    // 3. PREPARE RECEPTOR BUTTON (The Fix)
+    const prepBtn = document.getElementById('prepare-receptor-btn');
+    if (prepBtn) {
+        prepBtn.addEventListener('click', async function () {
+            console.log("Prepare Button Clicked"); 
+
+            if (!window.gridDimensions || !window.uploadedFilePath) {
+                alert("Please generate the grid first.");
+                return;
             }
-        }
-    } catch (err) {
-        console.error("Error saving grid:", err);
-        alert("Server error while saving grid.");
+
+            const btn = this;
+            const originalText = btn.innerHTML;
+            
+            // UI Loading
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Preparing...';
+            const statusMsg = document.getElementById('grid-status-msg');
+            if(statusMsg) {
+                statusMsg.textContent = "Running MGLTools...";
+                statusMsg.className = "small text-warning mb-2";
+            }
+
+            // Get values directly from inputs to be safe
+            const gridData = {
+                center_x: parseFloat(document.getElementById('center-x-slider').value),
+                center_y: parseFloat(document.getElementById('center-y-slider').value),
+                center_z: parseFloat(document.getElementById('center-z-slider').value),
+                size_x: parseFloat(document.getElementById('size-x-slider').value),
+                size_y: parseFloat(document.getElementById('size-y-slider').value),
+                size_z: parseFloat(document.getElementById('size-z-slider').value),
+            };
+
+            try {
+                const res = await fetch('/prepare_receptor', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filepath: window.uploadedFilePath, grid: gridData })
+                });
+
+                const data = await res.json();
+
+                if (res.ok) {
+                    if(statusMsg) {
+                        statusMsg.textContent = "Success!";
+                        statusMsg.className = "small text-success mb-2";
+                    }
+                    
+                    // FORCE NAVIGATION TO STEP 2
+                    if (typeof unlockStep === "function") {
+                        unlockStep(2);
+                    } else {
+                        // Fallback logic
+                        const step2Btn = document.getElementById('btn-step-2');
+                        if(step2Btn) {
+                            step2Btn.classList.remove('disabled');
+                            step2Btn.click();
+                        }
+                    }
+                } else {
+                    alert("Error: " + data.error);
+                    if(statusMsg) statusMsg.textContent = "Failed.";
+                }
+            } catch (err) {
+                console.error(err);
+                alert("Network Error: Check console.");
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        });
     }
+
+    // 4. RESET BUTTON (Keep this too)
+    const resetBtn = document.getElementById('reset-grid-btn');
+    if (resetBtn) {
+        resetBtn.addEventListener('click', function() {
+            if (window.initialGridDimensions) {
+                window.gridDimensions = Object.assign({}, window.initialGridDimensions);
+                safeDraw(window.gridDimensions);
+                window.updateSliders(window.gridDimensions);
+            }
+        });
+    }
+
 });

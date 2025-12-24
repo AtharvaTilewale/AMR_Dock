@@ -170,30 +170,66 @@ document.getElementById('param-upload-form').addEventListener('submit', function
 });
 
 // --- Run Docking ---
+// --- Run Docking ---
 document.getElementById('run-docking-btn').addEventListener('click', function() {
     if(typeof setDockingState === "function") setDockingState(true);
+    
     const runLoader = document.getElementById('run-loader');
     const logOutput = document.getElementById('log-output');
+    
     runLoader.style.display = 'inline-block';
     logOutput.textContent = 'Initializing...';
 
+    // Clear previous status
+    document.getElementById('run-final-status').innerHTML = '';
+    document.getElementById('download-btn').style.display = 'none';
+
     let pollingInterval;
+
     const pollStatus = () => {
-        fetch('/run-status').then(r => r.json()).then(data => {
-            if (data.log) { logOutput.textContent = data.log; logOutput.scrollTop = logOutput.scrollHeight; }
-            if (data.status !== 'running') {
+        fetch('/run-status')
+            .then(r => r.json())
+            .then(data => {
+                if (data.log) { 
+                    logOutput.textContent = data.log; 
+                    logOutput.scrollTop = logOutput.scrollHeight; 
+                }
+
+                if (data.status !== 'running') {
+                    clearInterval(pollingInterval);
+                    runLoader.style.display = 'none';
+                    if(typeof setDockingState === "function") setDockingState(false);
+                    
+                    if (data.status === 'completed') {
+                        document.getElementById('run-final-status').innerHTML = 
+                            `<div class="alert alert-success">Run Completed!</div>`;
+                    } else {
+                        document.getElementById('run-final-status').innerHTML = 
+                            `<div class="alert alert-danger">Run Failed. Check Log.</div>`;
+                    }
+                }
+            })
+            .catch(err => {
+                console.error("Polling error:", err);
                 clearInterval(pollingInterval);
-                runLoader.style.display = 'none';
-                if(typeof setDockingState === "function") setDockingState(false);
-                document.getElementById('run-final-status').innerHTML = data.status === 'completed' 
-                    ? `<div class="alert alert-success">Run Completed!<br>Results: ${data.results_path}</div>`
-                    : `<div class="alert alert-danger">Run Failed.</div>`;
-            }
-        });
+            });
     };
 
-    fetch('/run-docking', { method: 'POST' }).then(res => res.json()).then(data => {
-        if (data.message) pollingInterval = setInterval(pollStatus, 3000);
-        else { logOutput.textContent = data.error; if(typeof setDockingState === "function") setDockingState(false); }
-    });
+    fetch('/run-docking', { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+            if (data.message) {
+                // Start polling
+                pollingInterval = setInterval(pollStatus, 3000);
+            } else { 
+                logOutput.textContent = "Error starting run: " + (data.error || "Unknown error"); 
+                if(typeof setDockingState === "function") setDockingState(false); 
+                runLoader.style.display = 'none';
+            }
+        })
+        .catch(err => {
+            logOutput.textContent = "Network Error calling /run-docking";
+            if(typeof setDockingState === "function") setDockingState(false);
+            runLoader.style.display = 'none';
+        });
 });

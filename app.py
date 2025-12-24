@@ -11,7 +11,23 @@ import time
 import json
 import webbrowser
 import threading
+import zipfile
+import shutil
 
+# EXACT PATH defined by you
+# app.py
+
+# --- CRITICAL: UPDATE THESE PATHS FOR YOUR SYSTEM ---
+# If you are on Linux/Mac, find where 'pythonsh' is located inside MGLTools.
+# app.py
+
+# --- UPDATE THESE PATHS TO BE ABSOLUTE (NO '~') ---
+MGL_PYTHON = "/home/atharva/Downloads/mgltools_x86_64Linux2_1.5.7/bin/pythonsh"
+PREPARE_RECEPTOR = "/home/atharva/Downloads/mgltools_x86_64Linux2_1.5.7/MGLToolsPckgs/AutoDockTools/Utilities24/prepare_receptor4.py"
+
+# ... rest of your imports ...
+# If you don't know the path, find it using:
+# find ~ -name "prepare_receptor4.py"
 app = Flask(__name__, static_folder='static', template_folder='templates')
 app.secret_key = os.urandom(24)
 running_processes = {}
@@ -72,38 +88,65 @@ def upload_rec():
 @app.route('/lig_upload', methods=['POST'])
 def upload_lig():
     project_path = session.get('project_path')
-    if not project_path:
-        return jsonify({'error': 'No active project found.'}), 400
+    if not project_path: return jsonify({'error': 'No active project.'}), 400
 
     files = request.files.getlist('files[]')
+    ligand_dir = os.path.join(project_path, 'ligand')
+    pdbqt_dir = os.path.join(ligand_dir, 'pdbqt') # New Directory
+    os.makedirs(ligand_dir, exist_ok=True)
+    os.makedirs(pdbqt_dir, exist_ok=True)
 
-    if not files or all(file.filename == '' for file in files):
-        return jsonify({'error': 'No files uploaded.'}), 400
-
-    allowed_extensions = {'.mol2', '.sdf', '.zip'}
-    upload_folder = os.path.join(project_path, 'ligand')
-    os.makedirs(upload_folder, exist_ok=True)
-
-    saved_files = []
-
+    # 1. Upload Raw Files
     for file in files:
         filename = secure_filename(file.filename)
-        if filename == '':
-            continue
+        if filename:
+            file.save(os.path.join(ligand_dir, filename))
 
-        ext = os.path.splitext(filename)[1].lower()
-        if ext not in allowed_extensions:
-            return jsonify({'error': f'Invalid file type for {filename}. Allowed: .mol2, .sdf, .zip'}), 400
+    # 2. Unzip Zips
+    for zip_file in glob.glob(os.path.join(ligand_dir, '*.zip')):
+        try:
+            with zipfile.ZipFile(zip_file, 'r') as z:
+                z.extractall(ligand_dir)
+            os.remove(zip_file) # Cleanup zip
+        except Exception as e:
+            print(f"Error unzipping {zip_file}: {e}")
 
-        filepath = os.path.join(upload_folder, filename)
-        file.save(filepath)
-        saved_files.append(filepath)
+    # 3. Convert ALL molecules to PDBQT
+    valid_exts = ('.mol2', '.sdf', '.mol', '.cif', '.pdb')
+    raw_files = [f for f in os.listdir(ligand_dir) if f.lower().endswith(valid_exts)]
+    
+    converted_count = 0
+    errors = []
 
-    return jsonify({
-        'message': f'{len(saved_files)} file(s) uploaded successfully!',
-        'filepaths': saved_files,
-        'filenames': [os.path.basename(f) for f in saved_files]
-    })
+    for f in raw_files:
+        input_path = os.path.join(ligand_dir, f)
+        base_name = os.path.splitext(f)[0]
+        output_path = os.path.join(pdbqt_dir, base_name + '.pdbqt')
+
+        # OBABEL COMMAND
+        cmd = [
+            'obabel', input_path,
+            '-O', output_path,
+            '--gen3d',
+            '--minimize',
+            '--ff', 'mmff94',
+            '-xh',
+            '--partialcharge', 'gasteiger'
+        ]
+        
+        try:
+            subprocess.run(cmd, check=True)
+            converted_count += 1
+        except subprocess.CalledProcessError:
+            errors.append(f)
+
+    if converted_count == 0:
+         return jsonify({'error': 'No ligands were successfully converted. Check OpenBabel installation.'}), 500
+
+    msg = f"Processed {converted_count} ligands."
+    if errors: msg += f" Failed: {len(errors)}"
+
+    return jsonify({'message': msg, 'count': converted_count})
 
 
 @app.route('/grid', methods=['POST'])
@@ -185,27 +228,50 @@ size_z = {size[2]}
         app.logger.error(f"Error during grid generation: {e}")
         return jsonify({'error': 'An error occurred during grid generation.'}), 500
 
-@app.route('/save_grid', methods=['POST'])
-def save_adjusted_grid():
+# Inside app.py
+
+@app.route('/prepare_receptor', methods=['POST'])
+def prepare_receptor():
     project_path = session.get('project_path')
+    if not project_path: return jsonify({'error': "No project session."}), 400
+
     data = request.json
-    filepath = data.get('filepath')
     grid = data.get('grid')
-
-    if not filepath or not os.path.exists(filepath):
-        return jsonify({'error': 'Invalid file path'}), 400
-
-    upload_folder = os.path.join(project_path, 'params')
-    os.makedirs(upload_folder, exist_ok=True)
-
-    filename = "grid.json"
-    save_path = os.path.join(upload_folder, filename)
-
-    with open(save_path, 'w') as f:
+    
+    # 1. Save Grid
+    os.makedirs(os.path.join(project_path, 'params'), exist_ok=True)
+    with open(os.path.join(project_path, 'params', 'grid.json'), 'w') as f:
         json.dump(grid, f, indent=4)
 
-    return jsonify({'message': 'Grid saved successfully!', 'grid_file': filename, 'save_path': save_path})
+    # 2. Define Paths
+    receptor_dir = os.path.join(project_path, 'receptor')
+    pdb_files = glob.glob(os.path.join(receptor_dir, '*.pdb'))
+    if not pdb_files: return jsonify({'error': 'No PDB file found.'}), 400
+    
+    input_pdb = os.path.abspath(pdb_files[0])
+    output_pdbqt = os.path.abspath(os.path.join(receptor_dir, 'receptor.pdbqt'))
 
+    # 3. Construct Command
+    cmd = [MGL_PYTHON, PREPARE_RECEPTOR, '-r', input_pdb, '-o', output_pdbqt, '-A', 'checkhydrogens']
+    
+    print(f"--- EXECUTING MGLTOOLS ---\nCommand: {' '.join(cmd)}")
+
+    try:
+        # Run process
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        print("STDOUT:", result.stdout)
+        print("STDERR:", result.stderr)
+
+        if os.path.exists(output_pdbqt):
+            return jsonify({'message': 'Receptor prepared successfully!'})
+        else:
+            return jsonify({'error': f"Failed to create PDBQT. Stderr: {result.stderr}"}), 500
+
+    except Exception as e:
+        print(f"EXCEPTION: {e}")
+        return jsonify({'error': str(e)}), 500
+    
 # --- FIXED UPLOAD PARAMS ---
 # In app.py, replace the 'upload_params' route with this:
 
@@ -256,15 +322,15 @@ def run_docking():
         receptor_dir = os.path.join(project_path, 'receptor')
         ligand_dir = os.path.join(project_path, 'ligand')
         results_dir = os.path.join(project_path, 'results')
+        ligand_pdbqt_dir = os.path.join(ligand_dir, 'pdbqt')
         os.makedirs(results_dir, exist_ok=True)
 
         grid_config_path = os.path.join(params_dir, 'grid.json')
         docking_params_path = os.path.join(params_dir, 'param.json')
         
-        receptor_files = glob.glob(os.path.join(receptor_dir, '*.pdb'))
-        if not receptor_files:
-            return jsonify({'error': 'Receptor PDB file not found.'}), 404
-        receptor_file = receptor_files[0]
+        receptor_file = os.path.join(receptor_dir, 'receptor.pdbqt')
+        if not os.path.exists(receptor_file):
+            return jsonify({'error': 'Prepared receptor.pdbqt not found! Please re-run Step 1.'}), 404
         
         with open(grid_config_path, 'r') as f: grid_config = json.load(f)
         with open(docking_params_path, 'r') as f: docking_params = json.load(f)
@@ -275,7 +341,7 @@ def run_docking():
 
         master_config = {
             "receptor": os.path.abspath(receptor_file),
-            "ligand_dir": os.path.abspath(ligand_dir),
+            "ligand_dir": os.path.abspath(ligand_pdbqt_dir), # Point to the converted folder
             "results_dir": os.path.abspath(results_dir),
             "tool": tool,
             **grid_config,
@@ -287,7 +353,8 @@ def run_docking():
             json.dump(master_config, f, indent=4)
         
         script_path = os.path.join(os.path.dirname(__file__), 'unidock_multi.py')
-        command = ['python', script_path, master_config_path]
+        # Force the script to run inside the 'vina' conda environment
+        command = ['conda', 'run', '-n', 'vina', 'python', script_path, master_config_path]
         
         log_file_path = os.path.join(results_dir, 'docking_run.log')
         log_file = open(log_file_path, 'w')
@@ -361,6 +428,34 @@ def get_project_path():
         return jsonify({'project_path': project_path})
     else:
         return jsonify({'error': 'No active project'}), 400
+    
+@app.route('/download-results')
+def download_results():
+    project_path = session.get('project_path')
+    if not project_path: return abort(404)
+    
+    results_dir = os.path.join(project_path, 'results')
+    if not os.path.exists(results_dir): return abort(404)
+
+    # Create a zip of the results directory
+    shutil.make_archive(os.path.join(project_path, 'docking_results'), 'zip', results_dir)
+    
+    return send_file(os.path.join(project_path, 'docking_results.zip'), as_attachment=True)
+
+# Add this route to app.py
+
+@app.route('/download_csv')
+def download_csv():
+    project_path = session.get('project_path')
+    if not project_path: return abort(404)
+    
+    results_dir = os.path.join(project_path, 'results')
+    csv_path = os.path.join(results_dir, 'docking_scores.csv')
+    
+    if not os.path.exists(csv_path):
+        return jsonify({'error': 'CSV file not found. Run docking first.'}), 404
+
+    return send_file(csv_path, as_attachment=True)
 
 def open_browser():
     webbrowser.open_new("http://127.0.0.1:5000/")
