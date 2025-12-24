@@ -8,6 +8,7 @@ import csv
 import re
 
 def main():
+    sys.stdout.reconfigure(line_buffering=True)
     try:
         # --- 1. CONFIG SETUP ---
         if len(sys.argv) < 2:

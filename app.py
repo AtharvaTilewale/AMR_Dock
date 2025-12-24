@@ -13,6 +13,7 @@ import webbrowser
 import threading
 import zipfile
 import shutil
+import sys
 
 # EXACT PATH defined by you
 # app.py
@@ -92,28 +93,42 @@ def upload_lig():
 
     files = request.files.getlist('files[]')
     ligand_dir = os.path.join(project_path, 'ligand')
-    pdbqt_dir = os.path.join(ligand_dir, 'pdbqt') # New Directory
+    pdbqt_dir = os.path.join(ligand_dir, 'pdbqt') 
+
+    # --- NEW: CLEAR EXISTING LIGANDS FIRST ---
+    # This deletes the entire 'ligand' folder and everything inside it (pdbqt, zips, sdfs)
+    if os.path.exists(ligand_dir):
+        try:
+            shutil.rmtree(ligand_dir)
+        except Exception as e:
+            print(f"Error clearing ligand directory: {e}")
+            # If rmtree fails (rare), try to continue anyway
+            pass
+
+    # Re-create fresh directories
     os.makedirs(ligand_dir, exist_ok=True)
     os.makedirs(pdbqt_dir, exist_ok=True)
 
-    # 1. Upload Raw Files
+    # --- 1. Upload Raw Files ---
     for file in files:
         filename = secure_filename(file.filename)
         if filename:
             file.save(os.path.join(ligand_dir, filename))
 
-    # 2. Unzip Zips
+    # --- 2. Unzip Zips ---
     for zip_file in glob.glob(os.path.join(ligand_dir, '*.zip')):
         try:
             with zipfile.ZipFile(zip_file, 'r') as z:
                 z.extractall(ligand_dir)
-            os.remove(zip_file) # Cleanup zip
+            os.remove(zip_file) # Cleanup zip file itself
         except Exception as e:
             print(f"Error unzipping {zip_file}: {e}")
 
-    # 3. Convert ALL molecules to PDBQT
+    # --- 3. Convert ALL molecules to PDBQT ---
     valid_exts = ('.mol2', '.sdf', '.mol', '.cif', '.pdb')
-    raw_files = [f for f in os.listdir(ligand_dir) if f.lower().endswith(valid_exts)]
+    # Filter to ignore directories or unrelated files
+    raw_files = [f for f in os.listdir(ligand_dir) 
+                 if f.lower().endswith(valid_exts) and os.path.isfile(os.path.join(ligand_dir, f))]
     
     converted_count = 0
     errors = []
@@ -141,13 +156,20 @@ def upload_lig():
             errors.append(f)
 
     if converted_count == 0:
-         return jsonify({'error': 'No ligands were successfully converted. Check OpenBabel installation.'}), 500
+         # It's possible the user uploaded only .pdbqt files (no conversion needed)
+         # If so, we should copy them to the pdbqt dir or just count them if they exist
+         existing_pdbqt = glob.glob(os.path.join(ligand_dir, '*.pdbqt'))
+         if existing_pdbqt:
+             for p in existing_pdbqt:
+                 shutil.move(p, pdbqt_dir)
+             converted_count = len(existing_pdbqt)
+         else:
+             return jsonify({'error': 'No valid ligands found or conversion failed.'}), 500
 
     msg = f"Processed {converted_count} ligands."
     if errors: msg += f" Failed: {len(errors)}"
 
     return jsonify({'message': msg, 'count': converted_count})
-
 
 @app.route('/grid', methods=['POST'])
 def generate_grid():
@@ -354,12 +376,16 @@ def run_docking():
         
         script_path = os.path.join(os.path.dirname(__file__), 'unidock_multi.py')
         # Force the script to run inside the 'vina' conda environment
-        command = ['conda', 'run', '-n', 'vina', 'python', script_path, master_config_path]
+        # NEW (Faster, no buffering)
+ 
+        command = [sys.executable, '-u', script_path, master_config_path]
         
         log_file_path = os.path.join(results_dir, 'docking_run.log')
-        log_file = open(log_file_path, 'w')
+        # buffering=1 forces the file to write to disk after every new line
+        log_file = open(log_file_path, 'w', buffering=1) 
         
-        process = subprocess.Popen(command, stdout=log_file, stderr=subprocess.STDOUT)
+        # We also pass bufsize=1 to Popen to be doubly sure
+        process = subprocess.Popen(command, stdout=log_file, stderr=subprocess.STDOUT, bufsize=1)
         running_processes[project_path] = process
 
         return jsonify({'message': f'Docking process started using {tool.upper()}!'}), 200

@@ -220,7 +220,7 @@ document.getElementById('run-docking-btn').addEventListener('click', function() 
         .then(data => {
             if (data.message) {
                 // Start polling
-                pollingInterval = setInterval(pollStatus, 3000);
+                pollingInterval = setInterval(pollStatus, 500);
             } else { 
                 logOutput.textContent = "Error starting run: " + (data.error || "Unknown error"); 
                 if(typeof setDockingState === "function") setDockingState(false); 
